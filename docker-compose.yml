@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  frontend:
+    build: ./frontend
+    container_name: poster-frontend
+    ports:
+      - "8080:80"
+    networks:
+      - poster-network
+    restart: unless-stopped
+
+  data-service:
+    build: ./data-service
+    container_name: poster-data-service
+    ports:
+      - "5001:5001"
+    volumes:
+      - data-volume:/data
+    networks:
+      - poster-network
+    restart: unless-stopped
+
+  workflow-service:
+    build: ./workflow-service
+    container_name: poster-workflow-service
+    ports:
+      - "5000:5000"
+    environment:
+      - DATA_SERVICE_URL=http://data-service:5001
+    depends_on:
+      - data-service
+    networks:
+      - poster-network
+    restart: unless-stopped
+
+volumes:
+  data-volume:
+    driver: local
+
+networks:
+  poster-network:
+    driver: bridgevscode-webview://112h94pdtvib8i5mjgrdm586e6ql6qt36tcfvo7ddaf2f3ba9o8q/index.html?id=a04934d9-ec06-4174-900b-615473ea809c&parentId=1&origin=83f160bf-8aa3-4365-a179-e9dd5ea8d6c0&swVersion=4&extensionId=Anthropic.claude-code&platform=electron&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&parentOrigin=vscode-file%3A%2F%2Fvscode-app&session=de69f269-6062-44a5-a011-3c3d8edac043#

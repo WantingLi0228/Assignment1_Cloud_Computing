@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EventForge - Poster Submission System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            margin-top: 50px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+        }
+
+        input[type="text"],
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+            font-family: inherit;
+        }
+
+        input[type="text"]:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        input[type="file"] {
+            width: 100%;
+            padding: 10px;
+            border: 2px dashed #e0e0e0;
+            border-radius: 10px;
+            cursor: pointer;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .result {
+            margin-top: 30px;
+            padding: 20px;
+            border-radius: 10px;
+            display: none;
+        }
+
+        .result.show {
+            display: block;
+            animation: fadeIn 0.5s ease-in;
+            position: relative;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .result.READY {
+            background: #d1fae5;
+            border: 2px solid #10b981;
+            color: #065f46;
+        }
+
+        .result.NEEDS_REVISION {
+            background: #fed7aa;
+            border: 2px solid #f59e0b;
+            color: #92400e;
+        }
+
+        .result.INCOMPLETE {
+            background: #fee2e2;
+            border: 2px solid #ef4444;
+            color: #991b1b;
+        }
+
+        .result h3 {
+            margin-bottom: 10px;
+        }
+
+        .result .note {
+            font-size: 14px;
+            margin-top: 10px;
+            word-wrap: break-word;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: #fee2e2;
+            color: #991b1b;
+            padding: 12px;
+            border-radius: 10px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .error.show {
+            display: block;
+            animation: fadeIn 0.3s ease-in;
+            position: relative;
+        }
+
+        .error .close-btn {
+            position: absolute;
+            top: 8px;
+            right: 12px;
+            background: none;
+            border: none;
+            color: #991b1b;
+            font-size: 18px;
+            cursor: pointer;
+            width: auto;
+            padding: 0 4px;
+            line-height: 1;
+        }
+
+        .error .close-btn:hover {
+            transform: none;
+            box-shadow: none;
+        }
+
+        .polling-status {
+            font-size: 12px;
+            color: #666;
+            text-align: center;
+            margin-top: 10px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>EventForge</h1>
+            <div class="subtitle">Poster Submission System - Automated Review</div>
+
+            <form id="submissionForm">
+                <div class="form-group">
+                    <label>Event Title *</label>
+                    <input type="text" id="title" placeholder="e.g. 2026 AI Innovation Summit" maxlength="120" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Event Description *</label>
+                    <textarea id="description" placeholder="Please describe your event in detail" required></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label>Poster Image *</label>
+                    <input type="file" id="fileInput" required>
+                </div>
+
+                <button type="button" id="submitBtn">Submit for Review</button>
+            </form>
+
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p style="margin-top: 10px; color: #666;">Submitting and reviewing...</p>
+            </div>
+
+            <div class="error" id="error"></div>
+            <div class="result" id="result">
+                <button type="button" class="close-btn" id="closeResult" style="position:absolute;top:8px;right:12px;background:none;border:none;color:inherit;font-size:18px;cursor:pointer;width:auto;padding:0 4px;line-height:1;">&times;</button>
+                <h3 id="resultTitle"></h3>
+                <p id="resultStatus"></p>
+                <div class="note" id="resultNote"></div>
+                <div style="margin-top: 15px; font-size: 12px; color: #666;" id="resultId"></div>
+            </div>
+            <div class="polling-status" id="pollingStatus">Processing in background, waiting for result...</div>
+        </div>
+    </div>
+
+    <script>
+        const titleInput = document.getElementById('title');
+        const descInput = document.getElementById('description');
+        const fileInput = document.getElementById('fileInput');
+        const submitBtn = document.getElementById('submitBtn');
+        const loading = document.getElementById('loading');
+        const resultDiv = document.getElementById('result');
+        const errorDiv = document.getElementById('error');
+        const pollingStatus = document.getElementById('pollingStatus');
+        let pollingInterval = null;
+
+        document.getElementById('closeResult').addEventListener('click', () => {
+            resultDiv.classList.remove('show');
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+            }
+        });
+
+        submitBtn.addEventListener('click', async () => {
+            const title = titleInput.value.trim();
+            const description = descInput.value.trim();
+            const file = fileInput.files[0];
+
+            if (!title) {
+                showError('Please enter an event title');
+                return;
+            }
+
+            if (!description) {
+                showError('Please enter an event description');
+                return;
+            }
+
+            if (!file) {
+                showError('Please select a poster image');
+                return;
+            }
+
+            const fileName = file.name;
+
+            hideError();
+            resultDiv.classList.remove('show');
+            pollingStatus.style.display = 'none';
+
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+            }
+
+            loading.classList.add('show');
+            submitBtn.disabled = true;
+
+            try {
+                const response = await fetch('http://13.220.80.162:5000/submit', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        title: title,
+                        description: description,
+                        filename: fileName
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Submission failed');
+                }
+
+                const submissionId = data.submission_id;
+
+                loading.classList.remove('show');
+                pollingStatus.style.display = 'block';
+
+                let attempts = 0;
+                const maxAttempts = 30;
+
+                pollingInterval = setInterval(async () => {
+                    attempts++;
+                    try {
+                        const resultResponse = await fetch(`http://13.220.80.162:5000/result/${submissionId}`);
+                        const result = await resultResponse.json();
+
+                        if (result.status && result.status !== 'PENDING') {
+                            clearInterval(pollingInterval);
+                            pollingInterval = null;
+                            pollingStatus.style.display = 'none';
+
+                            showResult({
+                                status: result.status,
+                                note: result.note,
+                                submission_id: submissionId
+                            });
+                        } else if (attempts >= maxAttempts) {
+                            clearInterval(pollingInterval);
+                            pollingInterval = null;
+                            pollingStatus.style.display = 'none';
+                            showError('Processing timed out, please check back later');
+                        }
+                    } catch (err) {
+                        console.error('Polling error:', err);
+                    }
+                }, 2000);
+
+                fileInput.value = '';
+
+            } catch (err) {
+                loading.classList.remove('show');
+                showError(err.message);
+                submitBtn.disabled = false;
+            } finally {
+                submitBtn.disabled = false;
+            }
+        });
+
+        function showResult(data) {
+            resultDiv.className = `result show ${data.status}`;
+
+            const statusText = {
+                'READY': 'Approved',
+                'NEEDS_REVISION': 'Needs Revision',
+                'INCOMPLETE': 'Incomplete'
+            };
+
+            document.getElementById('resultTitle').textContent = statusText[data.status] || data.status;
+            document.getElementById('resultStatus').innerHTML = `<strong>Status:</strong> ${data.status}`;
+            document.getElementById('resultNote').innerHTML = `<strong>Note:</strong> ${data.note}`;
+            document.getElementById('resultId').innerHTML = `Submission ID: ${data.submission_id}`;
+
+            resultDiv.classList.add('show');
+
+            resultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        function showError(message) {
+            errorDiv.innerHTML = '<button type="button" class="close-btn" onclick="hideError()">&times;</button>' + message;
+            errorDiv.classList.add('show');
+
+            setTimeout(() => {
+                if (errorDiv.contains('show')) {
+                    hideError();
+                }
+            }, 8000);
+        }
+
+        function hideError() {
+            errorDiv.classList.remove('show');
+        }
+    </script>
+</body>
+</html>
