@@ -79,7 +79,7 @@ def submit():
     try:
         lambda_client = get_lambda_client()
         lambda_client.invoke(
-            FunctionName='poster_submisson_event',
+            FunctionName='poster_submission_event',
             InvocationType='Event',
             Payload=json.dumps({'submission_id': submission_id})
         )
