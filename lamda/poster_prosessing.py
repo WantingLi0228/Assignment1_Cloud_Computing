@@ -45,10 +45,10 @@ def lambda_handler(event, context):
             status = "INCOMPLETE"
             note = "Missing required fields."
         elif len(description) < 30:
-            status = "NEEDS REVISION"
+            status = "NEEDS_REVISION"
             note = f"Description too short (min 30 chars). Current: {len(description)}"
         elif not filename.lower().endswith(('.jpg', '.jpeg', '.png')):
-            status = "NEEDS REVISION"
+            status = "NEEDS_REVISION"
             note = "Invalid format. Only JPG/PNG allowed."
         else:
             status = "READY"

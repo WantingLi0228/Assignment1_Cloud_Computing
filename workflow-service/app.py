@@ -94,8 +94,26 @@ def submit():
 
 @app.route('/result/<submission_id>', methods=['GET'])
 def get_result(submission_id):
-    """Query result - DynamoDB first, fallback to data-service"""
-    # Try DynamoDB first
+    # Try S3 first
+    try:
+        s3 = boto3.client('s3', region_name='us-east-1')
+        s3_key = f"submissions/{submission_id}.json"
+        response = s3.get_object(Bucket='mini-project1-posters', Key=s3_key)
+        item = json.loads(response['Body'].read())
+        if item.get('final_status') and item['final_status'] != 'PENDING':
+            return jsonify({
+                'Id': item.get('Id'),
+                'title': item.get('title'),
+                'description': item.get('description'),
+                'filename': item.get('filename'),
+                'status': item['final_status'],
+                'note': item.get('final_note', ''),
+                'created_at': item.get('created_at')
+            }), 200
+    except Exception as e:
+        print(f"S3 read error: {e}")
+
+    # Fallback to DynamoDB
     try:
         table = get_dynamodb_table()
         response = table.get_item(Key={'Id': submission_id})
@@ -105,7 +123,7 @@ def get_result(submission_id):
     except Exception as e:
         print(f"DynamoDB read error: {e}")
 
-    # Fallback to data-service
+    # Final fallback to data-service
     try:
         resp = requests.get(
             f"{DATA_SERVICE_URL}/submissions/{submission_id}",

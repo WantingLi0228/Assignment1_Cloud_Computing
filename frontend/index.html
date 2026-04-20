@@ -240,13 +240,13 @@
                 <div class="form-group">
                     <label>Event Title</label>
                     <input type="text" id="title" placeholder="e.g. 2026 AI Innovation Summit" maxlength="120">
-                    <div class="hint">Required field</div>
+                    
                 </div>
 
                 <div class="form-group">
                     <label>Event Description</label>
                     <textarea id="description" placeholder="Please describe your event in detail (at least 30 characters)"></textarea>
-                    <div class="hint">Required field, minimum 30 characters</div>
+                    <div class="hint">Please enter at least 30 characters</div>
                 </div>
 
                 <div class="form-group">
@@ -298,18 +298,6 @@
             const title = titleInput.value.trim();
             const description = descInput.value.trim();
             const file = fileInput.files[0];
-            if (!title) {
-                showError("Please enter an event title");
-                return;
-            }
-            if (!description) {
-                showError("Please enter an event description");
-                return;
-            }
-            if (!file) {
-                showError("Please select a poster image");
-                return;
-            }
 
 
 
@@ -394,7 +382,7 @@
 
             const statusText = {
                 'READY': 'Approved',
-                'NEEDS REVISION': 'Needs Revision',
+                'NEEDS_REVISION': 'Needs Revision',
                 'INCOMPLETE': 'Incomplete'
             };
 
