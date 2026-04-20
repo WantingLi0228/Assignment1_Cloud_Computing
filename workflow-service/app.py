@@ -11,10 +11,10 @@ app = Flask(__name__)
 CORS(app)
 
 DATA_SERVICE_URL = os.environ.get('DATA_SERVICE_URL', 'http://localhost:5001')
+S3_BUCKET = 'mini-project1-posters'
 
-def get_dynamodb_table():
-    dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
-    return dynamodb.Table('PosterSubmissions')
+def get_s3_client():
+    return boto3.client('s3', region_name='us-east-1')
 
 def get_lambda_client():
     return boto3.client('lambda', region_name='us-east-1')
@@ -52,30 +52,27 @@ def submit():
     except Exception as e:
         print(f"Data service error: {e}")
 
-    # 2. Write to DynamoDB
+    # 2. Save submission metadata to S3
     try:
-        table = get_dynamodb_table()
-        table.put_item(Item={
-            'Id': submission_id,
-            'title': title,
-            'description': description,
-            'filename': filename,
-            'status': 'PENDING',
-            'created_at': created_at
-        })
+        s3 = get_s3_client()
+        s3.put_object(
+            Bucket=S3_BUCKET,
+            Key=f"submissions/{submission_id}.json",
+            Body=json.dumps(payload),
+            ContentType='application/json'
+        )
     except Exception as e:
-        print(f"DynamoDB write error: {e}")
+        print(f"S3 write error: {e}")
 
-    # 2.5 Upload file to S3
+    # 3. Upload poster file to S3
     if file:
         try:
-            s3 = boto3.client('s3', region_name='us-east-1')
             s3_key = f"posters/{submission_id}/{filename}"
-            s3.upload_fileobj(file, 'mini-project1-posters', s3_key)
+            s3.upload_fileobj(file, S3_BUCKET, s3_key)
         except Exception as e:
             print(f"S3 upload error: {e}")
 
-    # 3. Trigger poster_processing Lambda (async)
+    # 4. Trigger Lambda chain
     try:
         lambda_client = get_lambda_client()
         lambda_client.invoke(
@@ -96,34 +93,15 @@ def submit():
 def get_result(submission_id):
     # Try S3 first
     try:
-        s3 = boto3.client('s3', region_name='us-east-1')
-        s3_key = f"submissions/{submission_id}.json"
-        response = s3.get_object(Bucket='mini-project1-posters', Key=s3_key)
+        s3 = get_s3_client()
+        response = s3.get_object(Bucket=S3_BUCKET, Key=f"submissions/{submission_id}.json")
         item = json.loads(response['Body'].read())
-        if item.get('final_status') and item['final_status'] != 'PENDING':
-            return jsonify({
-                'Id': item.get('Id'),
-                'title': item.get('title'),
-                'description': item.get('description'),
-                'filename': item.get('filename'),
-                'status': item['final_status'],
-                'note': item.get('final_note', ''),
-                'created_at': item.get('created_at')
-            }), 200
+        if item.get('status') and item['status'] != 'PENDING':
+            return jsonify(item), 200
     except Exception as e:
         print(f"S3 read error: {e}")
 
-    # Fallback to DynamoDB
-    try:
-        table = get_dynamodb_table()
-        response = table.get_item(Key={'Id': submission_id})
-        item = response.get('Item')
-        if item and item.get('status') != 'PENDING':
-            return jsonify(item), 200
-    except Exception as e:
-        print(f"DynamoDB read error: {e}")
-
-    # Final fallback to data-service
+    # Fallback to data-service
     try:
         resp = requests.get(
             f"{DATA_SERVICE_URL}/submissions/{submission_id}",

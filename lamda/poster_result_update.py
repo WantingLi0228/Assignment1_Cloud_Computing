@@ -2,68 +2,65 @@ import json
 import boto3
 from datetime import datetime
 
-dynamodb = boto3.resource('dynamodb')
-s3 = boto3.client('s3')
-table = dynamodb.Table('PosterSubmissions')
-
-# S3 桶名（需要先创建）
-S3_BUCKET = 'mini-project1-posters'  # 改成你的桶名
+s3 = boto3.client('s3', region_name='us-east-1')
+S3_BUCKET = 'mini-project1-posters'
 
 def lambda_handler(event, context):
     """
-    最终状态更新，并备份到 S3
+    Final status update and backup
     """
     submission_id = event.get('submission_id')
     status = event.get('status')
     note = event.get('note')
-    
+
     if not submission_id:
         return {
             'statusCode': 400,
             'body': json.dumps({'error': 'Missing submission_id'})
         }
-    
+
     try:
-        # 1. 从 DynamoDB 获取完整记录
-        response = table.get_item(Key={'Id': submission_id})
-        item = response.get('Item')
-        
+        # 1. Get record from S3
+        response = s3.get_object(Bucket=S3_BUCKET, Key=f"submissions/{submission_id}.json")
+        item = json.loads(response['Body'].read())
+
         if not item:
             return {
                 'statusCode': 404,
                 'body': json.dumps({'error': 'Submission not found'})
             }
-        
-        # 2. 添加完成时间戳
+
+        # 2. Add completion timestamp
         item['completed_at'] = datetime.utcnow().isoformat()
         item['final_status'] = status
         item['final_note'] = note
-        
-        # 3. 备份到 S3
-        backup_key = f"submissions/{submission_id}.json"
+
+        # 3. Backup to S3 (completed folder)
+        backup_key = f"completed/{submission_id}.json"
         s3.put_object(
             Bucket=S3_BUCKET,
             Key=backup_key,
             Body=json.dumps(item, indent=2),
             ContentType='application/json'
         )
-        
-        print(f"提交 {submission_id} 已备份到 S3: {backup_key}")
-        
-        # 4. 更新 DynamoDB 的完成时间
-        table.update_item(
-            Key={'Id': submission_id},
-            UpdateExpression='SET completed_at = :completed_at, s3_backup = :s3_backup',
-            ExpressionAttributeValues={
-                ':completed_at': datetime.utcnow().isoformat(),
-                ':s3_backup': f"s3://{S3_BUCKET}/{backup_key}"
-            }
+
+        print(f"Submission {submission_id} backed up to S3: {backup_key}")
+
+        # 4. Update main record in S3
+        item['status'] = status
+        item['note'] = note
+        item['s3_backup'] = f"s3://{S3_BUCKET}/{backup_key}"
+        s3.put_object(
+            Bucket=S3_BUCKET,
+            Key=f"submissions/{submission_id}.json",
+            Body=json.dumps(item),
+            ContentType='application/json'
         )
-        
-        print(f"提交 {submission_id} 处理完成")
-        print(f"   最终状态: {status}")
-        print(f"   说明: {note}")
-        
+
+        print(f"Submission {submission_id} processing complete")
+        print(f"   Final status: {status}")
+        print(f"   Note: {note}")
+
         return {
             'statusCode': 200,
             'body': json.dumps({
@@ -73,9 +70,9 @@ def lambda_handler(event, context):
                 's3_backup': f"s3://{S3_BUCKET}/{backup_key}"
             })
         }
-        
+
     except Exception as e:
-        print(f"错误: {str(e)}")
+        print(f"Error: {str(e)}")
         return {
             'statusCode': 500,
             'body': json.dumps({'error': str(e)})
