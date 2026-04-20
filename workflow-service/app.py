@@ -28,16 +28,11 @@ def submit():
     if request.method == 'OPTIONS':
         return '', 200
 
-    data = request.get_json()
+    title = request.form.get('title', '').strip()
+    description = request.form.get('description', '').strip()
+    file = request.files.get('file')
 
-    required = ['title', 'description', 'filename']
-    for field in required:
-        if field not in data or not data[field]:
-            return jsonify({'error': f'Missing field: {field}'}), 400
-
-    title = data['title']
-    description = data['description']
-    filename = data['filename']
+    filename = file.filename if file else ''
     submission_id = str(uuid.uuid4())
     created_at = datetime.utcnow().isoformat()
 
@@ -70,6 +65,15 @@ def submit():
         })
     except Exception as e:
         print(f"DynamoDB write error: {e}")
+
+    # 2.5 Upload file to S3
+    if file:
+        try:
+            s3 = boto3.client('s3', region_name='us-east-1')
+            s3_key = f"posters/{submission_id}/{filename}"
+            s3.upload_fileobj(file, 'mini-project1-posters', s3_key)
+        except Exception as e:
+            print(f"S3 upload error: {e}")
 
     # 3. Trigger poster_processing Lambda (async)
     try:

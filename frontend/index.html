@@ -234,17 +234,17 @@
             <form id="submissionForm">
                 <div class="form-group">
                     <label>Event Title *</label>
-                    <input type="text" id="title" placeholder="e.g. 2026 AI Innovation Summit" maxlength="120" required>
+                    <input type="text" id="title" placeholder="e.g. 2026 AI Innovation Summit" maxlength="120">
                 </div>
 
                 <div class="form-group">
                     <label>Event Description *</label>
-                    <textarea id="description" placeholder="Please describe your event in detail" required></textarea>
+                    <textarea id="description" placeholder="Please describe your event in detail"></textarea>
                 </div>
 
                 <div class="form-group">
                     <label>Poster Image *</label>
-                    <input type="file" id="fileInput" required>
+                    <input type="file" id="fileInput">
                 </div>
 
                 <button type="button" id="submitBtn">Submit for Review</button>
@@ -291,22 +291,7 @@
             const description = descInput.value.trim();
             const file = fileInput.files[0];
 
-            if (!title) {
-                showError('Please enter an event title');
-                return;
-            }
 
-            if (!description) {
-                showError('Please enter an event description');
-                return;
-            }
-
-            if (!file) {
-                showError('Please select a poster image');
-                return;
-            }
-
-            const fileName = file.name;
 
             hideError();
             resultDiv.classList.remove('show');
@@ -321,16 +306,14 @@
             submitBtn.disabled = true;
 
             try {
+                const formData = new FormData();
+                formData.append('title', title);
+                formData.append('description', description);
+                formData.append('file', file);
+
                 const response = await fetch('http://13.220.80.162:5000/submit', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        title: title,
-                        description: description,
-                        filename: fileName
-                    })
+                    body: formData
                 });
 
                 const data = await response.json();
