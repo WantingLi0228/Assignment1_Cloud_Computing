@@ -11,13 +11,13 @@ app = Flask(__name__)
 CORS(app)
 
 DATA_SERVICE_URL = os.environ.get('DATA_SERVICE_URL', 'http://localhost:5001')
-S3_BUCKET = 'mini-project1-posters'
-
-def get_s3_client():
-    return boto3.client('s3', region_name='us-east-1')
+S3_BUCKET = os.environ.get('S3_BUCKET', 'mini-project1-posters')
 
 def get_lambda_client():
     return boto3.client('lambda', region_name='us-east-1')
+
+def get_s3_client():
+    return boto3.client('s3', region_name='us-east-1')
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -52,27 +52,16 @@ def submit():
     except Exception as e:
         print(f"Data service error: {e}")
 
-    # 2. Save submission metadata to S3
-    try:
-        s3 = get_s3_client()
-        s3.put_object(
-            Bucket=S3_BUCKET,
-            Key=f"submissions/{submission_id}.json",
-            Body=json.dumps(payload),
-            ContentType='application/json'
-        )
-    except Exception as e:
-        print(f"S3 write error: {e}")
-
-    # 3. Upload poster file to S3
+    # 2. Upload poster file to S3
     if file:
         try:
+            s3 = get_s3_client()
             s3_key = f"posters/{submission_id}/{filename}"
             s3.upload_fileobj(file, S3_BUCKET, s3_key)
         except Exception as e:
             print(f"S3 upload error: {e}")
 
-    # 4. Trigger Lambda chain
+    # 3. Trigger Lambda asynchronously
     try:
         lambda_client = get_lambda_client()
         lambda_client.invoke(
@@ -91,13 +80,23 @@ def submit():
 
 @app.route('/result/<submission_id>', methods=['GET'])
 def get_result(submission_id):
-    # Try S3 first
+    # Try S3 first: read result JSON written by Lambda
     try:
         s3 = get_s3_client()
-        response = s3.get_object(Bucket=S3_BUCKET, Key=f"submissions/{submission_id}.json")
-        item = json.loads(response['Body'].read())
-        if item.get('status') and item['status'] != 'PENDING':
-            return jsonify(item), 200
+        s3_key = f"submissions/{submission_id}.json"
+        response = s3.get_object(Bucket=S3_BUCKET, Key=s3_key)
+        item = json.loads(response['Body'].read().decode('utf-8'))
+
+        if item.get('final_status') and item['final_status'] != 'PENDING':
+            return jsonify({
+                'id': item.get('Id'),
+                'title': item.get('title'),
+                'description': item.get('description'),
+                'filename': item.get('filename'),
+                'status': item.get('final_status'),
+                'note': item.get('final_note', ''),
+                'created_at': item.get('created_at')
+            }), 200
     except Exception as e:
         print(f"S3 read error: {e}")
 
