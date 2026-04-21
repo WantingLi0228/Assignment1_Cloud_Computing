@@ -19,46 +19,21 @@ def get_lambda_client():
 def get_s3_client():
     return boto3.client('s3', region_name='us-east-1')
 
-def get_submission_input():
-    if request.is_json:
-        data = request.get_json(silent=True) or {}
-        return (
-            str(data.get('title', '')).strip(),
-            str(data.get('description', '')).strip(),
-            str(data.get('filename', '')).strip(),
-            None
-        )
-
-    file = request.files.get('file')
-    return (
-        request.form.get('title', '').strip(),
-        request.form.get('description', '').strip(),
-        file.filename if file else '',
-        file
-    )
-
-def write_submission_metadata(s3, payload):
-    s3.put_object(
-        Bucket=S3_BUCKET,
-        Key=f"submissions/{payload['id']}.json",
-        Body=json.dumps(payload),
-        ContentType='application/json'
-    )
-
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({'status': 'ok'})
 
-@app.route('/submit', methods=['POST', 'OPTIONS'])
+@app.route('/submit', methods=['POST'])
 def submit():
-    if request.method == 'OPTIONS':
-        return '', 200
+    data = request.get_json()
 
-    title, description, filename, file = get_submission_input()
+    title = str(data.get('title', '')).strip()
+    description = str(data.get('description', '')).strip()
+    filename = str(data.get('filename', '')).strip()
+
     submission_id = str(uuid.uuid4())
     created_at = datetime.utcnow().isoformat()
 
-    # 1. Save to data-service as PENDING
     payload = {
         'id': submission_id,
         'title': title,
@@ -69,23 +44,25 @@ def submit():
         'created_at': created_at
     }
 
+    # 1. Save to data-service
     try:
         requests.post(f"{DATA_SERVICE_URL}/submissions", json=payload, timeout=10)
     except Exception as e:
         print(f"Data service error: {e}")
 
-    # 2. Write metadata and optional poster file to S3 for Lambda processing
+    # 2. Write metadata to S3
     try:
         s3 = get_s3_client()
-        write_submission_metadata(s3, payload)
-
-        if file:
-            s3_key = f"posters/{submission_id}/{filename}"
-            s3.upload_fileobj(file, S3_BUCKET, s3_key)
+        s3.put_object(
+            Bucket=S3_BUCKET,
+            Key=f"submissions/{submission_id}.json",
+            Body=json.dumps(payload),
+            ContentType='application/json'
+        )
     except Exception as e:
         print(f"S3 upload error: {e}")
 
-    # 3. Trigger Lambda asynchronously
+    # 3. Trigger Lambda
     try:
         lambda_client = get_lambda_client()
         lambda_client.invoke(
@@ -104,7 +81,6 @@ def submit():
 
 @app.route('/result/<submission_id>', methods=['GET'])
 def get_result(submission_id):
-    # Try S3 first: read result JSON written by Lambda
     try:
         s3 = get_s3_client()
         s3_key = f"submissions/{submission_id}.json"
@@ -124,15 +100,12 @@ def get_result(submission_id):
     except Exception as e:
         print(f"S3 read error: {e}")
 
-    # Fallback to data-service
+    # fallback
     try:
-        resp = requests.get(
-            f"{DATA_SERVICE_URL}/submissions/{submission_id}",
-            timeout=10
-        )
+        resp = requests.get(f"{DATA_SERVICE_URL}/submissions/{submission_id}", timeout=10)
         return jsonify(resp.json()), resp.status_code
     except Exception as e:
-        return jsonify({'error': f'Service error: {str(e)}'}), 500
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000)
