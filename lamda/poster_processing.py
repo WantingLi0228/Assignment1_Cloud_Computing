@@ -1,6 +1,9 @@
 import json
 import boto3
 import logging
+import os
+import urllib.error
+import urllib.request
 
 # Initialize AWS SDK clients
 s3 = boto3.client('s3')
@@ -10,8 +13,38 @@ lambda_client = boto3.client('lambda')
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# Define the S3 Bucket name
-S3_BUCKET = 'mini-project1-posters'
+S3_BUCKET = os.environ.get('S3_BUCKET', 'mini-project1-posters')
+DATA_SERVICE_URL = os.environ.get('DATA_SERVICE_URL')
+
+
+def fetch_from_data_service(submission_id):
+    if not DATA_SERVICE_URL:
+        return None
+
+    url = f"{DATA_SERVICE_URL.rstrip('/')}/submissions/{submission_id}"
+    logger.info(f"Fetching submission metadata from data-service: {url}")
+
+    try:
+        with urllib.request.urlopen(url, timeout=10) as response:
+            if response.status != 200:
+                logger.warning(f"Data-service returned status {response.status}")
+                return None
+            return json.loads(response.read().decode('utf-8'))
+    except urllib.error.HTTPError as e:
+        logger.warning(f"Data-service HTTP error: {e.code}")
+    except Exception as e:
+        logger.warning(f"Data-service request failed: {str(e)}")
+
+    return None
+
+
+def put_submission_metadata(submission_id, item):
+    s3.put_object(
+        Bucket=S3_BUCKET,
+        Key=f"submissions/{submission_id}.json",
+        Body=json.dumps(item),
+        ContentType='application/json'
+    )
 
 def lambda_handler(event, context):
     """
@@ -34,13 +67,24 @@ def lambda_handler(event, context):
         }
 
     try:
-        # 2. Retrieve JSON metadata from S3
-        # Replaces traditional DynamoDB queries with an S3-based object retrieval pattern
+        # 2. Retrieve JSON metadata from S3, falling back to data-service.
         file_key = f"submissions/{submission_id}.json"
         logger.info(f"Attempting to fetch S3 object: {file_key}")
-        
-        response = s3.get_object(Bucket=S3_BUCKET, Key=file_key)
-        item = json.loads(response['Body'].read().decode('utf-8'))
+
+        try:
+            response = s3.get_object(Bucket=S3_BUCKET, Key=file_key)
+            item = json.loads(response['Body'].read().decode('utf-8'))
+        except s3.exceptions.NoSuchKey:
+            logger.warning(f"S3 metadata not found for {submission_id}; trying data-service.")
+            item = fetch_from_data_service(submission_id)
+            if not item:
+                logger.error(f"Submission metadata not found for {submission_id}")
+                return {
+                    'statusCode': 404,
+                    'body': json.dumps({'error': 'Submission metadata not found.'})
+                }
+            put_submission_metadata(submission_id, item)
+            logger.info(f"Created S3 metadata object for {submission_id}")
         
         # 3. Extract required fields for validation
         title = item.get('title', '')
@@ -76,7 +120,8 @@ def lambda_handler(event, context):
         update_payload = {
             'submission_id': submission_id,
             'status': status,
-            'note': note
+            'note': note,
+            'item': item
         }
         
         lambda_client.invoke(
@@ -96,9 +141,6 @@ def lambda_handler(event, context):
             })
         }
 
-    except s3.exceptions.NoSuchKey:
-        logger.error(f"S3 Error: File not found at key {file_key}")
-        return {'statusCode': 404, 'body': json.dumps({'error': 'Submission file not found in S3.'})}
     except Exception as e:
         logger.error(f"Internal System Error: {str(e)}")
         return {'statusCode': 500, 'body': json.dumps({'error': 'An internal processing error occurred.'})}
