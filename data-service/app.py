@@ -6,19 +6,19 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-# 修复 Windows 路径问题
+# Define database directory and path
 DB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
 DB_PATH = os.path.join(DB_DIR, 'submissions.db')
 os.makedirs(DB_DIR, exist_ok=True)
 
 def get_db():
-    """获取数据库连接"""
+    """Get database connection"""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
 def init_db():
-    """初始化数据库表"""
+    """Initialize database table"""
     conn = get_db()
     conn.execute('''
         CREATE TABLE IF NOT EXISTS submissions (
@@ -35,20 +35,20 @@ def init_db():
     conn.close()
     print(f"Database initialized at {DB_PATH}")
 
-# 启动时初始化数据库
+# Initialize database when service starts
 init_db()
 
 @app.route('/health', methods=['GET'])
 def health():
-    """健康检查"""
+    """Health check endpoint"""
     return jsonify({'status': 'ok'})
 
 @app.route('/submissions', methods=['POST'])
 def create_submission():
-    """创建新提交记录"""
+    """Create a new submission record"""
     data = request.get_json()
     
-    # 验证必填字段
+    # Validate required fields
     required = ['id', 'title', 'description', 'filename']
     for field in required:
         if field not in data:
@@ -74,7 +74,7 @@ def create_submission():
 
 @app.route('/submissions/<submission_id>', methods=['GET'])
 def get_submission(submission_id):
-    """查询提交记录"""
+    """Retrieve submission record"""
     conn = get_db()
     row = conn.execute(
         'SELECT id, title, description, filename, status, note, created_at FROM submissions WHERE id = ?',
@@ -88,7 +88,7 @@ def get_submission(submission_id):
 
 @app.route('/submissions/<submission_id>', methods=['PUT'])
 def update_submission(submission_id):
-    """更新提交记录状态"""
+    """Update submission status and note"""
     data = request.get_json()
     
     conn = get_db()
@@ -103,7 +103,7 @@ def update_submission(submission_id):
 
 @app.route('/submissions/<submission_id>', methods=['DELETE'])
 def delete_submission(submission_id):
-    """删除提交记录（可选）"""
+    """Delete a submission record (optional)"""
     conn = get_db()
     conn.execute('DELETE FROM submissions WHERE id = ?', (submission_id,))
     conn.commit()
