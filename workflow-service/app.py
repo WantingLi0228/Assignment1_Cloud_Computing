@@ -19,6 +19,32 @@ def get_lambda_client():
 def get_s3_client():
     return boto3.client('s3', region_name='us-east-1')
 
+def get_submission_input():
+    if request.is_json:
+        data = request.get_json(silent=True) or {}
+        return (
+            str(data.get('title', '')).strip(),
+            str(data.get('description', '')).strip(),
+            str(data.get('filename', '')).strip(),
+            None
+        )
+
+    file = request.files.get('file')
+    return (
+        request.form.get('title', '').strip(),
+        request.form.get('description', '').strip(),
+        file.filename if file else '',
+        file
+    )
+
+def write_submission_metadata(s3, payload):
+    s3.put_object(
+        Bucket=S3_BUCKET,
+        Key=f"submissions/{payload['id']}.json",
+        Body=json.dumps(payload),
+        ContentType='application/json'
+    )
+
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({'status': 'ok'})
@@ -28,11 +54,7 @@ def submit():
     if request.method == 'OPTIONS':
         return '', 200
 
-    title = request.form.get('title', '').strip()
-    description = request.form.get('description', '').strip()
-    file = request.files.get('file')
-
-    filename = file.filename if file else ''
+    title, description, filename, file = get_submission_input()
     submission_id = str(uuid.uuid4())
     created_at = datetime.utcnow().isoformat()
 
@@ -52,14 +74,16 @@ def submit():
     except Exception as e:
         print(f"Data service error: {e}")
 
-    # 2. Upload poster file to S3
-    if file:
-        try:
-            s3 = get_s3_client()
+    # 2. Write metadata and optional poster file to S3 for Lambda processing
+    try:
+        s3 = get_s3_client()
+        write_submission_metadata(s3, payload)
+
+        if file:
             s3_key = f"posters/{submission_id}/{filename}"
             s3.upload_fileobj(file, S3_BUCKET, s3_key)
-        except Exception as e:
-            print(f"S3 upload error: {e}")
+    except Exception as e:
+        print(f"S3 upload error: {e}")
 
     # 3. Trigger Lambda asynchronously
     try:
@@ -89,7 +113,7 @@ def get_result(submission_id):
 
         if item.get('final_status') and item['final_status'] != 'PENDING':
             return jsonify({
-                'id': item.get('Id'),
+                'id': item.get('id'),
                 'title': item.get('title'),
                 'description': item.get('description'),
                 'filename': item.get('filename'),
